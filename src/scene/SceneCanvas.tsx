@@ -7,17 +7,6 @@ import { vertexShader, fragmentShader, ditherTypeToInt } from '@/shaders/ditherS
 import { generateObject } from './objectGenerator';
 import { exportPNG, exportSVG } from './exportUtils';
 
-/**
- * SceneCanvas — The main WebGL viewport.
- *
- * Sets up a Three.js scene with:
- *   - Fixed isometric-style camera
- *   - Ground plane with optional grid
- *   - Soft shadow (baked circle texture)
- *   - Procedurally generated object with dithering shader
- *
- * All controls from the store are observed and trigger re-generation.
- */
 export default function SceneCanvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -44,7 +33,6 @@ export default function SceneCanvas() {
     };
   }, []);
 
-  // Build/rebuild the object when config changes
   const rebuildObject = useCallback(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -65,10 +53,10 @@ export default function SceneCanvas() {
     const g = parseInt(hexColor.slice(3, 5), 16) / 255;
     const b = parseInt(hexColor.slice(5, 7), 16) / 255;
 
-    // Create dithering material
     const ditherMaterial = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
+      transparent: config.transparency < 1.0,
       uniforms: {
         baseColor: { value: new THREE.Vector3(r, g, b) },
         lightDirection: {
@@ -81,13 +69,14 @@ export default function SceneCanvas() {
         ditherType: { value: ditherTypeToInt(config.ditheringStyle) },
         ditherScale: { value: 1.0 },
         outlineStrength: { value: config.renderingRules.noOutlines ? 0.0 : 1.0 },
+        opacity: { value: config.transparency },
       },
     });
 
     const newObject = generateObject({
-      description: config.description,
+      description: config.activeDescription,
       style: config.style,
-      details: config.details,
+      details: config.activeDetails,
       mood: config.mood,
       renderingRules: config.renderingRules,
       material: ditherMaterial,
@@ -96,11 +85,9 @@ export default function SceneCanvas() {
     objectGroupRef.current = newObject;
     scene.add(newObject);
 
-    // Update grid visibility
     if (gridRef.current) {
       gridRef.current.visible = config.renderingRules.gridBackground;
     }
-    // Update shadow visibility
     if (shadowRef.current) {
       shadowRef.current.visible = config.renderingRules.softShadow;
     }
@@ -111,12 +98,10 @@ export default function SceneCanvas() {
     const container = canvasRef.current;
     if (!container) return;
 
-    // Scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f0);
     sceneRef.current = scene;
 
-    // Isometric-style orthographic camera
     const aspect = container.clientWidth / container.clientHeight;
     const frustumSize = 5;
     const camera = new THREE.OrthographicCamera(
@@ -127,20 +112,19 @@ export default function SceneCanvas() {
       0.1,
       100
     );
-    // Classic isometric angle: looking down at 30° from diagonal
     camera.position.set(6, 5, 6);
     camera.lookAt(0, 0.8, 0);
     camera.zoom = 1.1;
     camera.updateProjectionMatrix();
     cameraRef.current = camera;
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({
-      antialias: false, // Dithering looks best without AA
-      preserveDrawingBuffer: true, // Needed for PNG export
+      antialias: false,
+      preserveDrawingBuffer: true,
+      alpha: true, // Allow transparent background for export
     });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(1); // Fixed pixel ratio for consistent dithering
+    renderer.setPixelRatio(1);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -150,7 +134,7 @@ export default function SceneCanvas() {
     scene.add(grid);
     gridRef.current = grid;
 
-    // Soft shadow — a circle with radial gradient texture
+    // Soft shadow — tagged with userData so export can find and hide it
     const shadowCanvas = document.createElement('canvas');
     shadowCanvas.width = 256;
     shadowCanvas.height = 256;
@@ -170,17 +154,16 @@ export default function SceneCanvas() {
     const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
     shadowMesh.rotation.x = -Math.PI / 2;
     shadowMesh.position.y = 0.01;
+    shadowMesh.userData.__ditherlab_shadow = true; // Tag for export filtering
     scene.add(shadowMesh);
     shadowRef.current = shadowMesh;
 
-    // Animation loop
     const animate = () => {
       frameIdRef.current = requestAnimationFrame(animate);
       renderer.render(scene, camera);
     };
     animate();
 
-    // Resize handler
     const handleResize = () => {
       if (!container) return;
       const w = container.clientWidth;
@@ -205,7 +188,6 @@ export default function SceneCanvas() {
     };
   }, []);
 
-  // Rebuild object whenever config changes
   useEffect(() => {
     rebuildObject();
   }, [rebuildObject]);

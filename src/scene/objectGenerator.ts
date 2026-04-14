@@ -22,8 +22,12 @@ interface GeneratorConfig {
 function segmentCount(style: StyleOption): number {
   switch (style) {
     case 'blocky': return 1;
+    case 'flat': return 1;
+    case 'stacked': return 4;
     case 'minimal': return 8;
+    case 'rounded': return 24;
     case 'soft': return 16;
+    case 'wireframe': return 12;
     case 'detailed': return 32;
   }
 }
@@ -360,13 +364,47 @@ function matchBuilder(description: string): BuilderFn {
 /**
  * Main entry point: generates a THREE.Group from user config.
  */
+/**
+ * Apply style-specific material modifications after object creation.
+ */
+function applyStyleModifiers(object: THREE.Group, style: StyleOption, baseMaterial: THREE.Material) {
+  if (style === 'wireframe') {
+    // Wireframe: show geometry edges only
+    object.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const wireframeMat = (baseMaterial as THREE.ShaderMaterial).clone();
+        wireframeMat.wireframe = true;
+        child.material = wireframeMat;
+      }
+    });
+  } else if (style === 'flat') {
+    // Flat: recompute normals for flat shading (faceted look)
+    object.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry = child.geometry.toNonIndexed();
+        child.geometry.computeVertexNormals();
+      }
+    });
+  } else if (style === 'stacked') {
+    // Stacked: scale Y slightly to give a compressed, layered feel
+    object.scale.y = 0.8;
+    object.scale.x = 1.1;
+    object.scale.z = 1.1;
+  } else if (style === 'rounded') {
+    // Rounded: high segment count already handled in segmentCount
+    // No additional modifier needed — the smooth geometry IS the effect
+  }
+}
+
 export function generateObject(config: GeneratorConfig): THREE.Group {
   const segments = segmentCount(config.style);
   const scale = moodScale(config.mood);
   const builder = matchBuilder(config.description + ' ' + config.details);
   const object = builder(config.material, segments, scale);
 
-  // Center the object if requested
+  // Apply style-specific modifications
+  applyStyleModifiers(object, config.style, config.material);
+
   if (config.renderingRules.centeredComposition) {
     const box = new THREE.Box3().setFromObject(object);
     const center = box.getCenter(new THREE.Vector3());
@@ -374,7 +412,6 @@ export function generateObject(config: GeneratorConfig): THREE.Group {
     object.position.z -= center.z;
   }
 
-  // Elevate base if requested
   if (config.renderingRules.elevatedBase) {
     const box = new THREE.Box3().setFromObject(object);
     if (box.min.y < 0) {
