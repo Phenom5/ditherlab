@@ -10,9 +10,15 @@ html, body {
   margin: 0;
   overflow: hidden;
   font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Clean scrollbar for control panel */
+/* Safe area padding for mobile bottom toolbar (notched phones) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Clean scrollbar for panels */
 ::-webkit-scrollbar {
   width: 4px;
 }
@@ -25,4 +31,14 @@ html, body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #a3a3a3;
+}
+
+/* Prevent overscroll bounce on iOS */
+html {
+  overscroll-behavior: none;
+}
+
+/* Touch action for canvas */
+canvas {
+  touch-action: none;
 }
